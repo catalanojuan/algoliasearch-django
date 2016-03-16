@@ -1,4 +1,5 @@
 from __future__ import unicode_literals
+from django.core.paginator import Paginator
 from django.conf import settings
 import logging
 
@@ -220,23 +221,23 @@ class AlgoliaIndex(object):
             qs = self.get_queryset()
         else:
             qs = self.model.objects.all()
-
-        for instance in qs:
+        
+        paginator = Paginator(qs, batch_size)
+            
+        for i in paginator.page_range:
+            objs = paginator.page(i)
+            
             if self.should_index:
-                if not self.should_index(instance):
-                    continue  # should not index
-
-            batch.append(self._build_object(instance))
-            if len(batch) >= batch_size:
-                result = self.__tmp_index.save_objects(batch)
-                logger.info('SAVE %d OBJECTS TO %s_tmp', len(batch),
-                            self.index_name)
-                batch = []
-            counts += 1
-        if len(batch) > 0:
+                objs = filter(lambda ins: self.should_index(ins), objs)
+                
+            batch = map(lambda ins: self._build_object(ins), objs)
+            length = len(batch)
             result = self.__tmp_index.save_objects(batch)
-            logger.info('SAVE %d OBJECTS TO %s_tmp', len(batch),
-                        self.index_name)
+            
+            logger.info('SAVE %d OBJECTS TO %s_tmp', length,
+                self.index_name)
+            counts += length
+            
         if result:
             self.__client.move_index(self.index_name + '_tmp', self.index_name)
             logger.info('MOVE INDEX %s_tmp TO %s', self.index_name,
